@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Categories — Smart Article Organizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+  <div class="main-content">
+    <div id="topbar-mount"></div>
+    <div class="page fade-in">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">Categories</div>
+          <div class="page-subtitle">Organize your articles into thematic groups</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-primary" onclick="openCatModal()">➕ New Category</button>
+        </div>
+      </div>
+
+      <div id="categories-container">
+        <div class="loading-screen"><div class="spinner-ring"></div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Category Modal -->
+<div class="modal-overlay hidden" id="cat-modal">
+  <div class="modal" style="max-width:460px">
+    <div class="modal-header">
+      <div class="modal-title" id="cat-modal-title">New Category</div>
+      <button class="modal-close" onclick="closeModal('cat-modal')">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Name <span class="required">*</span></label>
+        <input type="text" id="cat-name" class="form-control" placeholder="e.g. Machine Learning" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Description</label>
+        <textarea id="cat-desc" class="form-control" rows="3" placeholder="Optional description…"></textarea>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Color</label>
+          <div class="color-picker-row" id="color-picker">
+            <div class="color-swatch active" data-color="#6366f1" style="background:#6366f1" onclick="pickColor(this,'#6366f1')"></div>
+            <div class="color-swatch" data-color="#8b5cf6" style="background:#8b5cf6" onclick="pickColor(this,'#8b5cf6')"></div>
+            <div class="color-swatch" data-color="#ec4899" style="background:#ec4899" onclick="pickColor(this,'#ec4899')"></div>
+            <div class="color-swatch" data-color="#14b8a6" style="background:#14b8a6" onclick="pickColor(this,'#14b8a6')"></div>
+            <div class="color-swatch" data-color="#f59e0b" style="background:#f59e0b" onclick="pickColor(this,'#f59e0b')"></div>
+            <div class="color-swatch" data-color="#10b981" style="background:#10b981" onclick="pickColor(this,'#10b981')"></div>
+            <div class="color-swatch" data-color="#3b82f6" style="background:#3b82f6" onclick="pickColor(this,'#3b82f6')"></div>
+            <div class="color-swatch" data-color="#ef4444" style="background:#ef4444" onclick="pickColor(this,'#ef4444')"></div>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Icon</label>
+          <select id="cat-icon" class="form-control">
+            <option value="📁">📁 Folder</option>
+            <option value="🔬">🔬 Science</option>
+            <option value="💡">💡 Ideas</option>
+            <option value="🧠">🧠 AI/ML</option>
+            <option value="📊">📊 Data</option>
+            <option value="🌐">🌐 Web</option>
+            <option value="🔒">🔒 Security</option>
+            <option value="🏥">🏥 Medical</option>
+            <option value="⚡">⚡ Systems</option>
+            <option value="🌍">🌍 Environment</option>
+            <option value="📐">📐 Math</option>
+            <option value="🎨">🎨 Design</option>
+          </select>
+        </div>
+      </div>
+      <div id="cat-error" class="form-error hidden"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('cat-modal')">Cancel</button>
+      <button class="btn btn-primary" id="cat-save-btn" onclick="saveCategory()">Save Category</button>
+    </div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script src="/js/sidebar.js"></script>
+<script>
+  renderSidebar('Categories', 'Manage your article categories');
+  closeModalOnOverlay('cat-modal');
+
+  let editingId   = null;
+  let pickedColor = '#6366f1';
+
+  function pickColor(el, color) {
+    pickedColor = color;
+    document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+    el.classList.add('active');
+  }
+
+  function openCatModal(cat = null) {
+    editingId = cat ? cat.id : null;
+    document.getElementById('cat-modal-title').textContent = cat ? 'Edit Category' : 'New Category';
+    document.getElementById('cat-name').value = cat ? cat.name        : '';
+    document.getElementById('cat-desc').value = cat ? cat.description || '' : '';
+    document.getElementById('cat-icon').value = cat ? cat.icon        : '📁';
+    document.getElementById('cat-error').classList.add('hidden');
+
+    const color = cat ? cat.color : '#6366f1';
+    pickedColor = color;
+    document.querySelectorAll('.color-swatch').forEach(s => {
+      s.classList.toggle('active', s.dataset.color === color);
+    });
+
+    openModal('cat-modal');
+    setTimeout(() => document.getElementById('cat-name').focus(), 300);
+  }
+
+  async function saveCategory() {
+    const btn   = document.getElementById('cat-save-btn');
+    const errEl = document.getElementById('cat-error');
+    const name  = document.getElementById('cat-name').value.trim();
+    if (!name) { errEl.textContent = 'Name is required.'; errEl.classList.remove('hidden'); return; }
+
+    const body = {
+      name,
+      description: document.getElementById('cat-desc').value.trim(),
+      color:       pickedColor,
+      icon:        document.getElementById('cat-icon').value
+    };
+
+    setLoading(btn, true, 'Saving…');
+    errEl.classList.add('hidden');
+
+    const r = editingId
+      ? await api.put(`/categories/${editingId}`, body)
+      : await api.post('/categories', body);
+
+    setLoading(btn, false);
+
+    if (r.ok) {
+      closeModal('cat-modal');
+      showToast(editingId ? 'Category updated.' : 'Category created.', 'success');
+      loadCategories();
+    } else {
+      errEl.textContent = getErrors(r.data);
+      errEl.classList.remove('hidden');
+    }
+  }
+
+  function deleteCategory(id, name) {
+    showConfirm('Delete Category', `Delete "${name}"? Articles won't be deleted, just unassigned.`, async () => {
+      const r = await api.delete(`/categories/${id}`);
+      if (r.ok) { showToast('Category deleted.', 'success'); loadCategories(); }
+      else showToast(getErrors(r.data), 'error');
+    });
+  }
+
+  async function loadCategories() {
+    const container = document.getElementById('categories-container');
+    const r = await api.get('/categories');
+    if (!r.ok) { container.innerHTML = '<div class="empty-state"><p>Failed to load categories.</p></div>'; return; }
+
+    const cats = r.data.data;
+    if (!cats.length) {
+      container.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">🗂️</div>
+        <h3>No categories yet</h3>
+        <p>Create categories to organize your research papers.</p>
+        <button class="btn btn-primary" onclick="openCatModal()">➕ Create Category</button>
+      </div>`;
+      return;
+    }
+
+    container.innerHTML = `<div class="categories-grid">
+      ${cats.map(c => `
+      <div class="cat-card">
+        <div class="cat-card-top">
+          <div class="cat-icon-circle" style="background:${c.color}22;color:${c.color}">${c.icon || '📁'}</div>
+          <div style="flex:1">
+            <h3>${escHtml(c.name)}</h3>
+            <div class="count">${c.article_count} article${c.article_count!==1?'s':''}</div>
+          </div>
+        </div>
+        ${c.description ? `<p>${escHtml(c.description)}</p>` : ''}
+        <div class="cat-card-actions">
+          <button class="btn btn-secondary btn-sm" style="flex:1"
+                  onclick="window.location.href='/pages/articles.html?category=${c.id}'">
+            📄 View Articles
+          </button>
+          <button class="btn btn-secondary btn-sm btn-icon" onclick='openCatModal(${JSON.stringify(c)})' title="Edit">✏️</button>
+          <button class="btn btn-danger btn-sm btn-icon"    onclick="deleteCategory(${c.id},'${escHtml(c.name).replace(/'/g,'\\&apos;')}')" title="Delete">🗑️</button>
+        </div>
+      </div>`).join('')}
+    </div>`;
+  }
+
+  (async () => {
+    await initLayout();
+    loadCategories();
+  })();
+</script>
+</body>
+</html>

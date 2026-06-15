@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>My Articles — Smart Article Organizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+  <div class="main-content">
+    <div id="topbar-mount"></div>
+    <div class="page fade-in">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">My Articles</div>
+          <div class="page-subtitle" id="article-count">Loading…</div>
+        </div>
+        <div class="page-actions">
+          <button class="btn btn-secondary" id="view-toggle" onclick="toggleView()" title="Toggle view">⊞ Grid</button>
+          <button class="btn btn-primary" onclick="window.location.href='/pages/article-form.html'">➕ Add Article</button>
+        </div>
+      </div>
+
+      <!-- Filters -->
+      <div class="filters-row">
+        <div class="search-bar" style="max-width:320px">
+          <span class="search-icon">🔍</span>
+          <input type="text" id="filter-search" placeholder="Search articles…" oninput="debounceLoad()" />
+        </div>
+        <select class="filter-select" id="filter-category" onchange="loadArticles()">
+          <option value="">All Categories</option>
+        </select>
+        <select class="filter-select" id="filter-year" onchange="loadArticles()">
+          <option value="">All Years</option>
+        </select>
+        <select class="filter-select" id="filter-sort" onchange="loadArticles()">
+          <option value="newest">Newest First</option>
+          <option value="oldest">Oldest First</option>
+          <option value="title">Title A–Z</option>
+          <option value="year">Year (Recent)</option>
+        </select>
+        <button class="btn btn-secondary btn-sm" onclick="clearFilters()">Clear</button>
+      </div>
+
+      <!-- Articles Container -->
+      <div id="articles-container">
+        <div class="loading-screen"><div class="spinner-ring"></div></div>
+      </div>
+
+      <!-- Pagination -->
+      <div id="pagination" class="pagination"></div>
+
+    </div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script src="/js/sidebar.js"></script>
+<script>
+  renderSidebar('My Articles', 'Browse and manage your research papers');
+
+  let currentPage = 1;
+  let currentView = localStorage.getItem('articleView') || 'grid';
+  let debounceTimer;
+
+  function debounceLoad() {
+    clearTimeout(debounceTimer);
+    debounceTimer = setTimeout(() => { currentPage = 1; loadArticles(); }, 350);
+  }
+
+  function toggleView() {
+    currentView = currentView === 'grid' ? 'list' : 'grid';
+    localStorage.setItem('articleView', currentView);
+    document.getElementById('view-toggle').textContent = currentView === 'grid' ? '☰ List' : '⊞ Grid';
+    loadArticles();
+  }
+
+  function clearFilters() {
+    document.getElementById('filter-search').value   = '';
+    document.getElementById('filter-category').value = '';
+    document.getElementById('filter-year').value     = '';
+    document.getElementById('filter-sort').value     = 'newest';
+    currentPage = 1;
+    loadArticles();
+  }
+
+  async function loadCategories() {
+    const r = await api.get('/categories');
+    if (!r.ok) return;
+    const sel = document.getElementById('filter-category');
+    r.data.data.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id; opt.textContent = c.name;
+      sel.appendChild(opt);
+    });
+  }
+
+  function populateYears() {
+    const sel = document.getElementById('filter-year');
+    const currentYear = new Date().getFullYear();
+    for (let y = currentYear; y >= 1990; y--) {
+      const opt = document.createElement('option');
+      opt.value = y; opt.textContent = y;
+      sel.appendChild(opt);
+    }
+  }
+
+  async function loadArticles() {
+    const search   = document.getElementById('filter-search').value.trim();
+    const category = document.getElementById('filter-category').value;
+    const year     = document.getElementById('filter-year').value;
+    const sort     = document.getElementById('filter-sort').value;
+
+    const params = new URLSearchParams({ sort, page: currentPage, limit: 12 });
+    if (search)   params.set('search', search);
+    if (category) params.set('category_id', category);
+    if (year)     params.set('year', year);
+
+    const container = document.getElementById('articles-container');
+    container.innerHTML = '<div class="loading-screen"><div class="spinner-ring"></div></div>';
+
+    const r = await api.get('/articles?' + params.toString());
+    if (!r.ok) { container.innerHTML = '<div class="empty-state"><p>Failed to load articles.</p></div>'; return; }
+
+    const { data: articles, total, pages } = r.data;
+    document.getElementById('article-count').textContent = `${total} article${total !== 1 ? 's' : ''}`;
+
+    if (!articles.length) {
+      container.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">📭</div>
+        <h3>No articles found</h3>
+        <p>Try adjusting your filters or add a new article.</p>
+        <button class="btn btn-primary" onclick="window.location.href='/pages/article-form.html'">➕ Add Article</button>
+      </div>`;
+      document.getElementById('pagination').innerHTML = '';
+      return;
+    }
+
+    if (currentView === 'grid') {
+      container.innerHTML = `<div class="articles-grid">${articles.map(articleCard).join('')}</div>`;
+    } else {
+      container.innerHTML = `<div class="card"><div class="table-wrap"><table>
+        <thead><tr>
+          <th>Title</th><th>Authors</th><th>Year</th><th>Category</th><th>PDF</th><th>Actions</th>
+        </tr></thead>
+        <tbody>${articles.map(articleRow).join('')}</tbody>
+      </table></div></div>`;
+    }
+
+    renderPagination(pages);
+  }
+
+  function articleCard(a) {
+    return `<div class="article-card" onclick="event.target.closest('.article-card-actions, button') || (window.location.href='/pages/article-view.html?id=${a.id}')">
+      <div class="article-card-top">
+        <h3>${escHtml(a.title)}</h3>
+        <button class="article-card-fav ${a.is_favorite ? 'favorited' : ''}"
+                onclick="event.stopPropagation();toggleFav(this,${a.id})"
+                title="${a.is_favorite ? 'Remove from favorites' : 'Add to favorites'}">${a.is_favorite ? '⭐' : '☆'}</button>
+      </div>
+      <div class="article-meta">
+        ${a.authors        ? `<span class="article-meta-item">👤 ${escHtml(a.authors.substring(0,50))}${a.authors.length>50?'…':''}</span>` : ''}
+        ${a.publication_year ? `<span class="article-meta-item">📅 ${a.publication_year}</span>` : ''}
+        ${a.journal_conference ? `<span class="article-meta-item">📰 ${escHtml(a.journal_conference.substring(0,40))}${a.journal_conference.length>40?'…':''}</span>` : ''}
+      </div>
+      ${a.abstract ? `<div class="article-abstract">${escHtml(a.abstract)}</div>` : ''}
+      <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        ${a.categories ? categoryBadges(a.categories, a.category_colors) : ''}
+        ${a.pdf_filename ? `<span class="has-pdf-badge">📎 PDF</span>` : ''}
+      </div>
+      ${a.keywords ? `<div class="article-tags">${keywordTags(a.keywords)}</div>` : ''}
+      <div class="article-card-actions" onclick="event.stopPropagation()">
+        <button class="btn btn-secondary btn-sm" onclick="window.location.href='/pages/article-view.html?id=${a.id}'">👁 View</button>
+        <button class="btn btn-secondary btn-sm" onclick="window.location.href='/pages/article-form.html?id=${a.id}'">✏️ Edit</button>
+        <button class="btn btn-danger btn-sm"    onclick="deleteArticle(${a.id},'${escHtml(a.title).replace(/'/g,'\\&apos;')}')">🗑️</button>
+      </div>
+    </div>`;
+  }
+
+  function articleRow(a) {
+    return `<tr>
+      <td style="max-width:280px">
+        <div style="font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:280px"
+             title="${escHtml(a.title)}">${escHtml(a.title)}</div>
+      </td>
+      <td style="font-size:13px;color:var(--text-secondary)">${escHtml(a.authors||'—').substring(0,40)}</td>
+      <td>${a.publication_year || '—'}</td>
+      <td>${a.categories ? categoryBadges(a.categories, a.category_colors) : '—'}</td>
+      <td>${a.pdf_filename ? '<span class="has-pdf-badge">📎 PDF</span>' : '—'}</td>
+      <td>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-secondary btn-sm btn-icon" onclick="window.location.href='/pages/article-view.html?id=${a.id}'" title="View">👁</button>
+          <button class="btn btn-secondary btn-sm btn-icon" onclick="window.location.href='/pages/article-form.html?id=${a.id}'" title="Edit">✏️</button>
+          <button class="btn btn-danger btn-sm btn-icon" onclick="deleteArticle(${a.id},'${escHtml(a.title).replace(/'/g,'\\&apos;')}')" title="Delete">🗑️</button>
+        </div>
+      </td>
+    </tr>`;
+  }
+
+  async function toggleFav(btn, id) {
+    const isFav = btn.classList.contains('favorited');
+    const r = isFav ? await api.delete(`/favorites/${id}`) : await api.post(`/favorites/${id}`);
+    if (r.ok) {
+      btn.classList.toggle('favorited', !isFav);
+      btn.textContent = !isFav ? '⭐' : '☆';
+      showToast(isFav ? 'Removed from favorites.' : 'Added to favorites.', 'success');
+    }
+  }
+
+  function deleteArticle(id, title) {
+    showConfirm('Delete Article', `Delete "${title}"? This action cannot be undone.`, async () => {
+      const r = await api.delete(`/articles/${id}`);
+      if (r.ok) { showToast('Article deleted.', 'success'); loadArticles(); }
+      else showToast(getErrors(r.data), 'error');
+    });
+  }
+
+  function renderPagination(pages) {
+    const el = document.getElementById('pagination');
+    if (pages <= 1) { el.innerHTML = ''; return; }
+    let html = `<button class="page-btn" onclick="goPage(${currentPage-1})" ${currentPage===1?'disabled':''}>‹</button>`;
+    for (let p = 1; p <= pages; p++) {
+      if (p===1 || p===pages || Math.abs(p-currentPage)<=1) {
+        html += `<button class="page-btn ${p===currentPage?'active':''}" onclick="goPage(${p})">${p}</button>`;
+      } else if (Math.abs(p-currentPage)===2) {
+        html += `<span style="color:var(--text-muted);padding:0 4px">…</span>`;
+      }
+    }
+    html += `<button class="page-btn" onclick="goPage(${currentPage+1})" ${currentPage===pages?'disabled':''}>›</button>`;
+    el.innerHTML = html;
+  }
+
+  function goPage(p) { currentPage = p; loadArticles(); window.scrollTo({top:0,behavior:'smooth'}); }
+
+  (async () => {
+    await initLayout();
+    document.getElementById('view-toggle').textContent = currentView === 'grid' ? '☰ List' : '⊞ Grid';
+    await loadCategories();
+    populateYears();
+    loadArticles();
+  })();
+</script>
+</body>
+</html>

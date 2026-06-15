@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard — Smart Article Organizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+
+  <div class="main-content">
+    <div id="topbar-mount"></div>
+
+    <div class="page fade-in">
+
+      <!-- Welcome Banner -->
+      <div id="welcome-banner" style="background:linear-gradient(135deg,#6366f1,#4f46e5);border-radius:var(--radius-lg);padding:28px 32px;margin-bottom:28px;position:relative;overflow:hidden">
+        <div style="position:absolute;right:24px;top:-10px;font-size:80px;opacity:0.12">📚</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-bottom:6px">Welcome back,</div>
+        <div style="font-family:'Sora',sans-serif;font-size:24px;font-weight:800;color:#fff" id="welcome-name">Researcher</div>
+        <div style="font-size:13px;color:rgba(255,255,255,0.7);margin-top:8px" id="welcome-date"></div>
+      </div>
+
+      <!-- Stats -->
+      <div class="stats-grid" id="stats-grid">
+        <div class="stat-card" style="--stat-color:#6366f1">
+          <div class="stat-icon">📄</div>
+          <div class="stat-info"><div class="value" id="stat-articles">—</div><div class="label">Total Articles</div></div>
+        </div>
+        <div class="stat-card" style="--stat-color:#10b981">
+          <div class="stat-icon">🗂️</div>
+          <div class="stat-info"><div class="value" id="stat-categories">—</div><div class="label">Categories</div></div>
+        </div>
+        <div class="stat-card" style="--stat-color:#f59e0b">
+          <div class="stat-icon">⭐</div>
+          <div class="stat-info"><div class="value" id="stat-favorites">—</div><div class="label">Favorites</div></div>
+        </div>
+        <div class="stat-card" style="--stat-color:#3b82f6">
+          <div class="stat-icon">📎</div>
+          <div class="stat-info"><div class="value" id="stat-pdf">—</div><div class="label">With PDF</div></div>
+        </div>
+      </div>
+
+      <!-- Two columns: recent articles + activity -->
+      <div class="two-col">
+
+        <!-- Recent Articles -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">📄 Recent Articles</span>
+            <button class="btn btn-secondary btn-sm" onclick="window.location.href='/pages/articles.html'">View All</button>
+          </div>
+          <div id="recent-articles" class="card-body">
+            <div class="loading-screen"><div class="spinner-ring"></div></div>
+          </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">⚡ Recent Activity</span>
+          </div>
+          <div id="recent-activity" class="card-body">
+            <div class="loading-screen"><div class="spinner-ring"></div></div>
+          </div>
+        </div>
+
+      </div><!-- .two-col -->
+
+    </div><!-- .page -->
+  </div><!-- .main-content -->
+</div>
+
+<script src="/js/app.js"></script>
+<script src="/js/sidebar.js"></script>
+<script>
+  renderSidebar('Dashboard', 'Overview of your research library');
+
+  (async () => {
+    const user = await initLayout();
+    if (!user) return;
+
+    // Welcome banner
+    document.getElementById('welcome-name').textContent = user.full_name || user.username;
+    document.getElementById('welcome-date').textContent =
+      new Date().toLocaleDateString('en-US', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+    // Load dashboard data
+    const r = await api.get('/dashboard');
+    if (!r.ok) { showToast('Failed to load dashboard.', 'error'); return; }
+
+    const { stats, recent_articles, recent_activity } = r.data;
+
+    // Stats
+    document.getElementById('stat-articles').textContent   = stats.total_articles   || 0;
+    document.getElementById('stat-categories').textContent = stats.total_categories || 0;
+    document.getElementById('stat-favorites').textContent  = stats.total_favorites  || 0;
+    document.getElementById('stat-pdf').textContent        = stats.total_with_pdf   || 0;
+
+    // Recent articles
+    const artEl = document.getElementById('recent-articles');
+    if (!recent_articles.length) {
+      artEl.innerHTML = `<div class="empty-state" style="padding:40px 16px">
+        <div class="empty-icon">📭</div>
+        <h3>No articles yet</h3>
+        <p>Start by adding your first research paper.</p>
+        <button class="btn btn-primary" onclick="window.location.href='/pages/article-form.html'">Add Article</button>
+      </div>`;
+    } else {
+      artEl.innerHTML = recent_articles.map(a => `
+        <div style="padding:12px 0;border-bottom:1px solid var(--border);cursor:pointer"
+             onclick="window.location.href='/pages/article-view.html?id=${a.id}'">
+          <div style="font-size:14px;font-weight:600;margin-bottom:5px;line-height:1.4">${escHtml(a.title)}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+            ${a.authors ? `<span style="font-size:12px;color:var(--text-secondary)">👤 ${escHtml(a.authors)}</span>` : ''}
+            ${a.publication_year ? `<span style="font-size:12px;color:var(--text-secondary)">📅 ${a.publication_year}</span>` : ''}
+            <span style="font-size:11px;color:var(--text-muted);margin-left:auto">${timeAgo(a.created_at)}</span>
+          </div>
+          ${a.categories ? `<div style="margin-top:6px">${categoryBadges(a.categories, a.category_colors)}</div>` : ''}
+        </div>`).join('');
+    }
+
+    // Recent activity
+    const actEl = document.getElementById('recent-activity');
+    if (!recent_activity.length) {
+      actEl.innerHTML = `<div class="empty-state" style="padding:40px 16px">
+        <div class="empty-icon">📋</div><h3>No activity yet</h3><p>Your actions will appear here.</p>
+      </div>`;
+    } else {
+      const actionConfig = {
+        created: { icon: '🆕', color: '#10b981', label: 'Added' },
+        updated: { icon: '✏️', color: '#3b82f6', label: 'Updated' },
+        deleted: { icon: '🗑️', color: '#ef4444', label: 'Deleted' }
+      };
+      actEl.innerHTML = `<div class="activity-list">${
+        recent_activity.map(a => {
+          const cfg = actionConfig[a.action] || { icon: '📌', color: '#6366f1', label: a.action };
+          const title = a.article_title || a.detail || 'an article';
+          return `<div class="activity-item">
+            <span style="font-size:18px">${cfg.icon}</span>
+            <div class="activity-text">
+              <strong style="color:${cfg.color}">${cfg.label}</strong>
+              "${escHtml(title.substring(0, 60))}${title.length > 60 ? '…' : ''}"
+            </div>
+            <span class="activity-time">${timeAgo(a.created_at)}</span>
+          </div>`;
+        }).join('')
+      }</div>`;
+    }
+  })();
+</script>
+</body>
+</html>

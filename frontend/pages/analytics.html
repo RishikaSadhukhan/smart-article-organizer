@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analytics — Smart Article Organizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+  <div class="main-content">
+    <div id="topbar-mount"></div>
+    <div class="page fade-in">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">📊 Analytics</div>
+          <div class="page-subtitle">Insights into your research library</div>
+        </div>
+      </div>
+
+      <div id="analytics-content">
+        <div class="loading-screen"><div class="spinner-ring"></div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script src="/js/sidebar.js"></script>
+<script>
+  renderSidebar('Analytics', 'Research library insights');
+
+  function barChart(items, labelKey, valueKey, colorFn) {
+    if (!items.length) return '<p style="color:var(--text-secondary);font-size:13px">No data available.</p>';
+    const max = Math.max(...items.map(i => i[valueKey])) || 1;
+    return items.map(item => `
+      <div class="bar-item">
+        <div class="bar-label" title="${escHtml(String(item[labelKey]))}">${escHtml(String(item[labelKey]))}</div>
+        <div class="bar-track">
+          <div class="bar-fill" style="width:${(item[valueKey]/max*100).toFixed(1)}%;background:${colorFn(item)}"></div>
+        </div>
+        <div class="bar-value">${item[valueKey]}</div>
+      </div>`).join('');
+  }
+
+  function uploadTrendChart(data) {
+    if (!data.length) return '<p style="color:var(--text-secondary);font-size:13px">No upload data yet.</p>';
+    const max   = Math.max(...data.map(d => d.count)) || 1;
+    const w     = 100 / data.length;
+    const cols  = data.map((d, i) => {
+      const pct = (d.count / max * 100).toFixed(1);
+      return `<div style="display:flex;flex-direction:column;align-items:center;flex:1;gap:6px;cursor:default" title="${d.month}: ${d.count} articles">
+        <div style="font-size:12px;color:var(--text-secondary)">${d.count}</div>
+        <div style="width:100%;background:var(--bg-elevated);border-radius:4px 4px 0 0;height:100px;display:flex;align-items:flex-end">
+          <div style="width:100%;height:${pct}%;background:linear-gradient(to top,#6366f1,#818cf8);border-radius:4px 4px 0 0;transition:height 0.8s ease;min-height:2px"></div>
+        </div>
+        <div style="font-size:10px;color:var(--text-muted);writing-mode:vertical-rl;transform:rotate(180deg)">${d.month}</div>
+      </div>`;
+    });
+    return `<div style="display:flex;align-items:flex-end;gap:4px;height:150px;padding-bottom:28px">${cols.join('')}</div>`;
+  }
+
+  function donutChart(withPdf, withoutPdf) {
+    const total = withPdf + withoutPdf || 1;
+    const pctWith = ((withPdf / total) * 100).toFixed(0);
+    const pctWithout = 100 - pctWith;
+    const deg = (withPdf / total) * 360;
+    return `
+      <div style="display:flex;align-items:center;gap:24px">
+        <div style="width:100px;height:100px;border-radius:50%;background:conic-gradient(#10b981 0deg ${deg}deg,var(--bg-elevated) ${deg}deg 360deg);flex-shrink:0;position:relative">
+          <div style="position:absolute;inset:14px;background:var(--bg-card);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800">${pctWith}%</div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px">
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px">
+            <div style="width:10px;height:10px;border-radius:50%;background:#10b981"></div>
+            With PDF: <strong>${withPdf}</strong> (${pctWith}%)
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;font-size:13px">
+            <div style="width:10px;height:10px;border-radius:50%;background:var(--bg-elevated);border:2px solid var(--border)"></div>
+            Without PDF: <strong>${withoutPdf}</strong> (${pctWithout}%)
+          </div>
+        </div>
+      </div>`;
+  }
+
+  async function loadAnalytics() {
+    const r = await api.get('/analytics');
+    const el = document.getElementById('analytics-content');
+    if (!r.ok) { el.innerHTML = '<div class="empty-state"><p>Failed to load analytics.</p></div>'; return; }
+
+    const { per_category, by_year, upload_trend, top_keywords, pdf_stats } = r.data;
+
+    const COLORS = ['#6366f1','#8b5cf6','#ec4899','#14b8a6','#f59e0b','#10b981','#3b82f6','#ef4444'];
+
+    el.innerHTML = `
+      <div class="chart-grid">
+
+        <!-- Articles per Category -->
+        <div class="chart-card">
+          <div class="chart-title">🗂️ Articles per Category</div>
+          ${per_category.length
+            ? `<div class="bar-chart">${barChart(per_category, 'name', 'count', (item) => item.color || '#6366f1')}</div>`
+            : '<div class="empty-state" style="padding:24px"><p>Add articles to categories to see this chart.</p></div>'}
+        </div>
+
+        <!-- Publication Year Distribution -->
+        <div class="chart-card">
+          <div class="chart-title">📅 Publication Year Distribution</div>
+          ${by_year.length
+            ? `<div class="bar-chart">${barChart(by_year, 'year', 'count', (_, i) => COLORS[i % COLORS.length])}</div>`
+            : '<div class="empty-state" style="padding:24px"><p>Add articles with publication years to see this chart.</p></div>'}
+        </div>
+
+      </div>
+
+      <div class="chart-grid">
+
+        <!-- Upload Trend -->
+        <div class="chart-card">
+          <div class="chart-title">📈 Upload Trend (Last 12 Months)</div>
+          ${uploadTrendChart(upload_trend)}
+        </div>
+
+        <!-- PDF Coverage -->
+        <div class="chart-card">
+          <div class="chart-title">📎 PDF Coverage</div>
+          ${donutChart(parseInt(pdf_stats.with_pdf)||0, parseInt(pdf_stats.without_pdf)||0)}
+          <div style="margin-top:16px;font-size:13px;color:var(--text-secondary)">
+            Total articles in library: <strong style="color:var(--text-primary)">${pdf_stats.total||0}</strong>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Top Keywords -->
+      <div class="chart-card" style="margin-bottom:20px">
+        <div class="chart-title">🔑 Most Used Keywords</div>
+        ${top_keywords.length ? `
+        <div class="keyword-cloud">
+          ${top_keywords.map((kw, i) => {
+            const size  = 12 + Math.min(kw.count * 2, 10);
+            const color = COLORS[i % COLORS.length];
+            return `<span class="keyword-pill"
+              style="font-size:${size}px;background:${color}18;color:${color};border-color:${color}44;cursor:pointer"
+              onclick="window.location.href='/pages/search.html?keyword=${encodeURIComponent(kw.keyword)}'"
+              title="${kw.count} article${kw.count!==1?'s':''}"
+            >${escHtml(kw.keyword)} <span style="font-size:10px;opacity:0.7">${kw.count}</span></span>`;
+          }).join('')}
+        </div>` : '<div class="empty-state" style="padding:24px"><p>Add keywords to your articles to see the keyword cloud.</p></div>'}
+      </div>
+
+    `;
+  }
+
+  (async () => {
+    await initLayout();
+    loadAnalytics();
+  })();
+</script>
+</body>
+</html>

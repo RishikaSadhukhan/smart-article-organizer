@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Search — Smart Article Organizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+  <div class="main-content">
+    <div id="topbar-mount"></div>
+    <div class="page fade-in">
+
+      <div class="page-title" style="margin-bottom:24px">🔍 Search Articles</div>
+
+      <!-- Search Hero -->
+      <div class="card" style="margin-bottom:24px">
+        <div class="card-body">
+          <div class="search-bar" style="max-width:100%;margin-bottom:16px">
+            <span class="search-icon">🔍</span>
+            <input type="text" id="main-search" placeholder="Search by title, abstract, or any text…" oninput="debounceSearch()" style="font-size:16px;padding:13px 14px 13px 42px" />
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px">
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Author</label>
+              <input type="text" id="s-author" class="form-control" placeholder="Author name…" oninput="debounceSearch()" />
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Keyword</label>
+              <input type="text" id="s-keyword" class="form-control" placeholder="Keyword…" oninput="debounceSearch()" />
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Category</label>
+              <select id="s-category" class="form-control" onchange="doSearch()">
+                <option value="">All Categories</option>
+              </select>
+            </div>
+            <div class="form-group" style="margin:0">
+              <label class="form-label">Year</label>
+              <input type="number" id="s-year" class="form-control" placeholder="e.g. 2022" min="1800" max="2099" oninput="debounceSearch()" />
+            </div>
+            <div style="display:flex;align-items:flex-end;gap:8px">
+              <button class="btn btn-primary btn-full" onclick="doSearch()">Search</button>
+              <button class="btn btn-secondary" onclick="clearSearch()" title="Clear">✕</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Results -->
+      <div id="search-info" style="font-size:13px;color:var(--text-secondary);margin-bottom:16px"></div>
+      <div id="results-container"></div>
+
+    </div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script src="/js/sidebar.js"></script>
+<script>
+  renderSidebar('Search', 'Find articles by any field');
+
+  let debounceTimer;
+  function debounceSearch() { clearTimeout(debounceTimer); debounceTimer = setTimeout(doSearch, 400); }
+
+  function clearSearch() {
+    ['main-search','s-author','s-keyword','s-year'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('s-category').value = '';
+    document.getElementById('results-container').innerHTML = '';
+    document.getElementById('search-info').textContent = '';
+  }
+
+  async function loadCategories() {
+    const r = await api.get('/categories');
+    if (!r.ok) return;
+    const sel = document.getElementById('s-category');
+    r.data.data.forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id; opt.textContent = c.name;
+      sel.appendChild(opt);
+    });
+  }
+
+  async function doSearch() {
+    const search   = document.getElementById('main-search').value.trim();
+    const author   = document.getElementById('s-author').value.trim();
+    const keyword  = document.getElementById('s-keyword').value.trim();
+    const category = document.getElementById('s-category').value;
+    const year     = document.getElementById('s-year').value.trim();
+
+    if (!search && !author && !keyword && !category && !year) {
+      document.getElementById('results-container').innerHTML = '';
+      document.getElementById('search-info').textContent = '';
+      return;
+    }
+
+    const params = new URLSearchParams({ limit: 50 });
+    if (search)   params.set('search', search);
+    if (author)   params.set('author', author);
+    if (keyword)  params.set('keyword', keyword);
+    if (category) params.set('category_id', category);
+    if (year)     params.set('year', year);
+
+    document.getElementById('results-container').innerHTML = '<div class="loading-screen"><div class="spinner-ring"></div></div>';
+
+    const r = await api.get('/articles?' + params.toString());
+    if (!r.ok) { document.getElementById('results-container').innerHTML = '<p style="color:var(--danger)">Search failed.</p>'; return; }
+
+    const { data: articles, total } = r.data;
+
+    const terms = [search, author, keyword].filter(Boolean);
+    document.getElementById('search-info').textContent = `Found ${total} result${total!==1?'s':''}${terms.length ? ' for: ' + terms.join(', ') : ''}`;
+
+    if (!articles.length) {
+      document.getElementById('results-container').innerHTML = `<div class="empty-state">
+        <div class="empty-icon">🔍</div>
+        <h3>No results found</h3>
+        <p>Try different keywords or remove some filters.</p>
+      </div>`;
+      return;
+    }
+
+    document.getElementById('results-container').innerHTML = `
+      <div class="card"><div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>Title</th><th>Authors</th><th>Year</th><th>Journal</th><th>Category</th><th>PDF</th><th></th>
+          </tr></thead>
+          <tbody>
+            ${articles.map(a => `<tr>
+              <td style="max-width:260px">
+                <div style="font-weight:600;font-size:14px;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"
+                     onclick="window.location.href='/pages/article-view.html?id=${a.id}'"
+                     title="${escHtml(a.title)}">${highlight(escHtml(a.title), search)}</div>
+                ${a.keywords ? `<div style="margin-top:4px">${keywordTags(a.keywords)}</div>` : ''}
+              </td>
+              <td style="font-size:13px;color:var(--text-secondary)">${highlight(escHtml(a.authors||'—'), author)}</td>
+              <td>${a.publication_year||'—'}</td>
+              <td style="font-size:13px;color:var(--text-secondary);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escHtml(a.journal_conference||'')}">${escHtml(a.journal_conference||'—')}</td>
+              <td>${a.categories ? categoryBadges(a.categories, a.category_colors) : '—'}</td>
+              <td>${a.pdf_filename ? '<span class="has-pdf-badge">📎</span>' : '—'}</td>
+              <td>
+                <div style="display:flex;gap:6px">
+                  <button class="btn btn-secondary btn-sm btn-icon" onclick="window.location.href='/pages/article-view.html?id=${a.id}'" title="View">👁</button>
+                  <button class="btn btn-secondary btn-sm btn-icon" onclick="window.location.href='/pages/article-form.html?id=${a.id}'" title="Edit">✏️</button>
+                </div>
+              </td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div></div>`;
+  }
+
+  function highlight(text, term) {
+    if (!term || !text) return text;
+    const re = new RegExp(`(${term.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')})`, 'gi');
+    return text.replace(re, '<mark style="background:#6366f133;color:var(--accent-light);border-radius:2px;padding:0 2px">$1</mark>');
+  }
+
+  (async () => {
+    await initLayout();
+    await loadCategories();
+
+    // Pre-fill from URL params
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('search'))   document.getElementById('main-search').value = params.get('search');
+    if (params.get('category')) document.getElementById('s-category').value  = params.get('category');
+    if (params.get('author'))   document.getElementById('s-author').value    = params.get('author');
+    if (params.get('keyword'))  document.getElementById('s-keyword').value   = params.get('keyword');
+    if (Object.fromEntries(params).search || Object.fromEntries(params).category ||
+        Object.fromEntries(params).author || Object.fromEntries(params).keyword) doSearch();
+  })();
+</script>
+</body>
+</html>

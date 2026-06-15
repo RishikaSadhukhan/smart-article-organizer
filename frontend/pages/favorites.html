@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Favorites — Smart Article Organizer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Sora:wght@700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+<div class="app-layout">
+  <div id="sidebar-mount"></div>
+  <div class="main-content">
+    <div id="topbar-mount"></div>
+    <div class="page fade-in">
+
+      <div class="page-header">
+        <div>
+          <div class="page-title">⭐ Favorites</div>
+          <div class="page-subtitle" id="fav-count">Your saved research papers</div>
+        </div>
+      </div>
+
+      <div id="favorites-container">
+        <div class="loading-screen"><div class="spinner-ring"></div></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="/js/app.js"></script>
+<script src="/js/sidebar.js"></script>
+<script>
+  renderSidebar('Favorites', 'Your starred research papers');
+
+  async function removeFav(id, title) {
+    showConfirm('Remove Favorite', `Remove "${title}" from favorites?`, async () => {
+      const r = await api.delete(`/favorites/${id}`);
+      if (r.ok) { showToast('Removed from favorites.', 'success'); loadFavorites(); }
+      else showToast(getErrors(r.data), 'error');
+    });
+  }
+
+  async function loadFavorites() {
+    const container = document.getElementById('favorites-container');
+    const r = await api.get('/favorites');
+    if (!r.ok) { container.innerHTML = '<div class="empty-state"><p>Failed to load favorites.</p></div>'; return; }
+
+    const items = r.data.data;
+    document.getElementById('fav-count').textContent = `${items.length} favorited article${items.length !== 1 ? 's' : ''}`;
+
+    if (!items.length) {
+      container.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">⭐</div>
+        <h3>No favorites yet</h3>
+        <p>Star articles from your library to save them here for quick access.</p>
+        <button class="btn btn-primary" onclick="window.location.href='/pages/articles.html'">Browse Articles</button>
+      </div>`;
+      return;
+    }
+
+    container.innerHTML = `<div class="articles-grid">${items.map(a => `
+      <div class="article-card">
+        <div class="article-card-top">
+          <h3 onclick="window.location.href='/pages/article-view.html?id=${a.id}'" style="cursor:pointer">${escHtml(a.title)}</h3>
+          <button class="article-card-fav favorited" onclick="removeFav(${a.id},'${escHtml(a.title).replace(/'/g,'\\&apos;')}')" title="Remove">⭐</button>
+        </div>
+        <div class="article-meta">
+          ${a.authors          ? `<span class="article-meta-item">👤 ${escHtml(a.authors.substring(0,50))}</span>` : ''}
+          ${a.publication_year ? `<span class="article-meta-item">📅 ${a.publication_year}</span>` : ''}
+        </div>
+        ${a.abstract ? `<div class="article-abstract">${escHtml(a.abstract)}</div>` : ''}
+        <div style="display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+          ${a.categories ? categoryBadges(a.categories, a.category_colors) : ''}
+          ${a.pdf_filename ? `<span class="has-pdf-badge">📎 PDF</span>` : ''}
+        </div>
+        <div style="font-size:11px;color:var(--text-muted);margin-top:4px">Favorited ${timeAgo(a.favorited_at)}</div>
+        <div class="article-card-actions">
+          <button class="btn btn-secondary btn-sm" onclick="window.location.href='/pages/article-view.html?id=${a.id}'">👁 View</button>
+          <button class="btn btn-secondary btn-sm" onclick="window.location.href='/pages/article-form.html?id=${a.id}'">✏️ Edit</button>
+          ${a.pdf_filename ? `<a href="/api/articles/${a.id}/download" class="btn btn-success btn-sm">⬇️ PDF</a>` : ''}
+        </div>
+      </div>`).join('')}</div>`;
+  }
+
+  (async () => {
+    await initLayout();
+    loadFavorites();
+  })();
+</script>
+</body>
+</html>
